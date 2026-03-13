@@ -1,11 +1,11 @@
 {
-  "name": "FitCouple",
-  "short_name": "FitCouple",
+  "name": "Aloooo",
+  "short_name": "Aloooo",
   "description": "Your personal workout plan",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f5f3ff",
-  "theme_color": "#7c3aed",
+  "background_color": "#0d0805",
+  "theme_color": "#f97316",
   "icons": [
     {
       "src": "/icon-192.png",

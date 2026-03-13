@@ -2,13 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FitCouple",
+  title: "Aloooo",
   description: "Your personal workout plan",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "FitCouple",
+    statusBarStyle: "black-translucent",
+    title: "Aloooo",
   },
 };
 
@@ -17,7 +17,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#7c3aed",
+  themeColor: "#0d0805",
 };
 
 export default function RootLayout({
@@ -30,7 +30,7 @@ export default function RootLayout({
       <head>
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
-      <body className="bg-primary-50 min-h-screen antialiased">
+      <body className="min-h-screen antialiased font-sans">
         {children}
       </body>
     </html>
