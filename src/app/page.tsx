@@ -98,7 +98,7 @@ export default function Home() {
   if (!person) {
     return (
       <main className="max-w-md mx-auto px-4 pt-20 text-center safe-bottom">
-        <h1 className="text-4xl font-extrabold text-gradient mb-2">Aloooo</h1>
+        <h1 className="text-4xl font-extrabold text-gradient mb-2">hialooo</h1>
         <p className="text-text-muted text-sm mb-12">Who&apos;s training today?</p>
 
         <div className="flex gap-4 justify-center">
@@ -129,7 +129,7 @@ export default function Home() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-gradient">Aloooo</h1>
+          <h1 className="text-2xl font-extrabold text-gradient">hialooo</h1>
           <p className="text-xs text-text-muted mt-0.5">Your workout plan</p>
         </div>
 
