@@ -150,17 +150,81 @@ export function getExerciseLogs(day: number, person: Person): ExerciseLog[] {
 }
 
 export function saveExerciseLogs(day: number, person: Person, logs: ExerciseLog[]) {
-  localStorage.setItem(logKey(person, todayStr(), day), JSON.stringify(logs));
+  const date = todayStr();
+  localStorage.setItem(logKey(person, date, day), JSON.stringify(logs));
 
   if (!isDemoMode()) {
-    getSupabase()
+    syncLogToSupabase(day, person, date, logs);
+  }
+}
+
+async function syncLogToSupabase(day: number, person: Person, date: string, logs: ExerciseLog[]) {
+  try {
+    const { error } = await getSupabase()
       .from("workout_logs")
       .upsert(
-        { day_of_week: day, person, log_date: todayStr(), exercise_logs: logs },
+        { day_of_week: day, person, log_date: date, exercise_logs: logs },
         { onConflict: "day_of_week,log_date,person" }
-      )
-      .then(() => {});
+      );
+    if (error) {
+      console.error("Supabase sync failed:", error);
+      markPendingSync(day, person, date);
+    }
+  } catch (e) {
+    console.error("Supabase sync error:", e);
+    markPendingSync(day, person, date);
   }
+}
+
+function markPendingSync(day: number, person: Person, date: string) {
+  const key = "zdbfit_pending_sync";
+  const pending: string[] = JSON.parse(localStorage.getItem(key) || "[]");
+  const entry = `${person}_${date}_${day}`;
+  if (!pending.includes(entry)) {
+    pending.push(entry);
+    localStorage.setItem(key, JSON.stringify(pending));
+  }
+}
+
+export async function retryPendingSync() {
+  if (isDemoMode() || typeof window === "undefined") return;
+  const key = "zdbfit_pending_sync";
+  const pending: string[] = JSON.parse(localStorage.getItem(key) || "[]");
+  if (pending.length === 0) return;
+
+  const stillPending: string[] = [];
+  for (const entry of pending) {
+    const [person, date, dayStr] = entry.split("_") as [Person, string, string];
+    const day = parseInt(dayStr);
+    const logData = localStorage.getItem(logKey(person, date, day));
+    if (!logData) continue;
+
+    try {
+      const { error } = await getSupabase()
+        .from("workout_logs")
+        .upsert(
+          { day_of_week: day, person, log_date: date, exercise_logs: JSON.parse(logData) },
+          { onConflict: "day_of_week,log_date,person" }
+        );
+      if (error) stillPending.push(entry);
+    } catch {
+      stillPending.push(entry);
+    }
+  }
+
+  localStorage.setItem(key, JSON.stringify(stillPending));
+}
+
+export async function syncTodayToSupabase(day: number, person: Person) {
+  if (isDemoMode() || typeof window === "undefined") return;
+  const date = todayStr();
+  const logData = localStorage.getItem(logKey(person, date, day));
+  if (!logData) return;
+
+  const logs: ExerciseLog[] = JSON.parse(logData);
+  if (!logs.some((e) => e.completed || e.kg)) return;
+
+  await syncLogToSupabase(day, person, date, logs);
 }
 
 // --- History ---

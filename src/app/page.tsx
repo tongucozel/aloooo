@@ -6,6 +6,8 @@ import {
   getExerciseLogs,
   saveExerciseLogs,
   getLogHistory,
+  retryPendingSync,
+  syncTodayToSupabase,
   DAYS,
   PROFILES,
   type Person,
@@ -26,12 +28,13 @@ export default function Home() {
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Load saved profile on mount
+  // Load saved profile on mount + retry pending syncs
   useEffect(() => {
     const saved = localStorage.getItem("zdbfit_person") as Person | null;
     if (saved && (saved === "zdb" || saved === "tbo")) {
       setPerson(saved);
     }
+    retryPendingSync();
   }, []);
 
   function selectPerson(p: Person) {
@@ -54,6 +57,8 @@ export default function Home() {
         }));
         setLogs(filled);
         setHistory(getLogHistory(day, p));
+        // Sync today's localStorage data to Supabase in case previous sync failed
+        syncTodayToSupabase(day, p);
       } else {
         setLogs([]);
         setHistory([]);
