@@ -27,6 +27,7 @@ export default function Home() {
   const [history, setHistory] = useState<DayLog[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   // Load saved profile on mount + retry pending syncs
   useEffect(() => {
@@ -51,7 +52,7 @@ export default function Home() {
       if (data && data.exercises.length > 0) {
         const saved = getExerciseLogs(day, p);
         const filled: ExerciseLog[] = data.exercises.map((ex, i) => ({
-          name: ex.name,
+          name: saved[i]?.name || ex.name,
           completed: saved[i]?.completed ?? false,
           kg: saved[i]?.kg ?? "",
         }));
@@ -87,6 +88,14 @@ export default function Home() {
     if (!person) return;
     const updated = [...logs];
     updated[index] = { ...updated[index], kg };
+    setLogs(updated);
+    saveExerciseLogs(selectedDay, person, updated);
+  }
+
+  function updateName(index: number, name: string) {
+    if (!person) return;
+    const updated = [...logs];
+    updated[index] = { ...updated[index], name };
     setLogs(updated);
     saveExerciseLogs(selectedDay, person, updated);
   }
@@ -261,9 +270,27 @@ export default function Home() {
                   </button>
 
                   <div className="flex-1 min-w-0">
-                    <h4 className={`font-bold transition-colors ${log.completed ? "text-text-muted line-through" : "text-text-primary"}`}>
-                      {exercise.name}
-                    </h4>
+                    {editingIndex === index ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={log.name}
+                        onChange={(e) => updateName(index, e.target.value)}
+                        onBlur={() => setEditingIndex(null)}
+                        onKeyDown={(e) => { if (e.key === "Enter") setEditingIndex(null); }}
+                        className="w-full font-bold text-text-primary bg-transparent border-b border-accent-DEFAULT outline-none pb-0.5"
+                      />
+                    ) : (
+                      <h4
+                        onClick={() => setEditingIndex(index)}
+                        className={`font-bold transition-colors cursor-pointer ${log.completed ? "text-text-muted line-through" : "text-text-primary"}`}
+                      >
+                        {log.name}
+                        {log.name !== exercise.name && (
+                          <span className="ml-1.5 text-[10px] font-normal text-accent-DEFAULT/60 no-underline inline-block">edited</span>
+                        )}
+                      </h4>
+                    )}
                     <div className="flex gap-4 mt-1.5">
                       <span className="text-sm text-text-muted">
                         <span className="font-semibold text-accent-DEFAULT">{exercise.sets}</span> sets
