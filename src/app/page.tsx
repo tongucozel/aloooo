@@ -8,6 +8,7 @@ import {
   getLogHistory,
   retryPendingSync,
   syncTodayToSupabase,
+  syncAllLocalLogsToSupabase,
   DAYS,
   PROFILES,
   type Person,
@@ -36,6 +37,7 @@ export default function Home() {
       setPerson(saved);
     }
     retryPendingSync();
+    syncAllLocalLogsToSupabase();
   }, []);
 
   function selectPerson(p: Person) {

@@ -227,6 +227,61 @@ export async function syncTodayToSupabase(day: number, person: Person) {
   await syncLogToSupabase(day, person, date, logs);
 }
 
+// One-time sync: push ALL localStorage logs to Supabase (catches any missed syncs)
+export async function syncAllLocalLogsToSupabase() {
+  if (isDemoMode() || typeof window === "undefined") return;
+  const synced = localStorage.getItem("zdbfit_full_sync_done");
+  if (synced) return; // only run once
+
+  const prefix = LOG_PREFIX;
+  const entries: { person: Person; date: string; day: number; logs: ExerciseLog[] }[] = [];
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith(prefix)) continue;
+    // key format: zdbfit_log_{person}_{date}_{day}
+    const rest = key.slice(prefix.length); // e.g. "zdb_2026-03-22_6"
+    const parts = rest.match(/^(zdb|tbo)_(\d{4}-\d{2}-\d{2})_(\d)$/);
+    if (!parts) continue;
+
+    try {
+      const data: ExerciseLog[] = JSON.parse(localStorage.getItem(key)!);
+      if (data.some((e) => e.completed || e.kg)) {
+        entries.push({
+          person: parts[1] as Person,
+          date: parts[2],
+          day: parseInt(parts[3]),
+          logs: data,
+        });
+      }
+    } catch { /* skip */ }
+  }
+
+  if (entries.length === 0) {
+    localStorage.setItem("zdbfit_full_sync_done", "1");
+    return;
+  }
+
+  let allOk = true;
+  for (const entry of entries) {
+    try {
+      const { error } = await getSupabase()
+        .from("workout_logs")
+        .upsert(
+          { day_of_week: entry.day, person: entry.person, log_date: entry.date, exercise_logs: entry.logs },
+          { onConflict: "day_of_week,log_date,person" }
+        );
+      if (error) allOk = false;
+    } catch {
+      allOk = false;
+    }
+  }
+
+  if (allOk) {
+    localStorage.setItem("zdbfit_full_sync_done", "1");
+  }
+}
+
 // --- History ---
 
 export function getLogHistory(day: number, person: Person): DayLog[] {
