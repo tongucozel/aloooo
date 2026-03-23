@@ -5,6 +5,7 @@ import {
   fetchWorkout,
   saveWorkout,
   getLogHistoryFromSupabase,
+  getLastSeen,
   isDemoMode,
   DAYS,
   PROFILES,
@@ -31,8 +32,12 @@ export default function AdminPage() {
   const [demo, setDemo] = useState(false);
   const [tab, setTab] = useState<"program" | "history">("program");
   const [history, setHistory] = useState<DayLog[]>([]);
+  const [lastSeen, setLastSeen] = useState<Record<Person, string | null>>({ zdb: null, tbo: null });
 
-  useEffect(() => { setDemo(isDemoMode()); }, []);
+  useEffect(() => {
+    setDemo(isDemoMode());
+    getLastSeen().then(setLastSeen);
+  }, []);
 
   function handlePin() {
     if (pin === ADMIN_PIN) { setAuthenticated(true); setPinError(false); }
@@ -86,6 +91,20 @@ export default function AdminPage() {
     return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   }
 
+  function formatLastSeen(ts: string | null): string {
+    if (!ts) return "Never";
+    const d = new Date(ts);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return "Just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    return `${diffDay}d ago`;
+  }
+
   // ===== PIN SCREEN =====
   if (!authenticated) {
     return (
@@ -132,7 +151,7 @@ export default function AdminPage() {
       )}
 
       {/* Person Selector */}
-      <div className="flex gap-1 glass-card-strong !rounded-btn p-1 mb-4">
+      <div className="flex gap-1 glass-card-strong !rounded-btn p-1 mb-2">
         {(["zdb", "tbo"] as Person[]).map((p) => (
           <button
             key={p}
@@ -145,6 +164,13 @@ export default function AdminPage() {
           >
             {PROFILES[p].label}
           </button>
+        ))}
+      </div>
+      <div className="flex justify-between px-1 mb-4">
+        {(["zdb", "tbo"] as Person[]).map((p) => (
+          <span key={p} className="text-[10px] text-text-muted/60 flex-1 text-center">
+            {formatLastSeen(lastSeen[p])}
+          </span>
         ))}
       </div>
 

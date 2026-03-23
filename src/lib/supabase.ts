@@ -282,6 +282,34 @@ export async function syncAllLocalLogsToSupabase() {
   }
 }
 
+// --- Activity tracking ---
+
+export async function updateLastSeen(person: Person) {
+  if (isDemoMode() || typeof window === "undefined") return;
+  try {
+    await getSupabase()
+      .from("activity_log")
+      .upsert(
+        { person, last_seen: new Date().toISOString() },
+        { onConflict: "person" }
+      );
+  } catch { /* silent */ }
+}
+
+export async function getLastSeen(): Promise<Record<Person, string | null>> {
+  const result: Record<Person, string | null> = { zdb: null, tbo: null };
+  if (isDemoMode()) return result;
+  try {
+    const { data } = await getSupabase().from("activity_log").select("*");
+    if (data) {
+      for (const row of data) {
+        result[row.person as Person] = row.last_seen;
+      }
+    }
+  } catch { /* silent */ }
+  return result;
+}
+
 // --- History ---
 
 export function getLogHistory(day: number, person: Person): DayLog[] {

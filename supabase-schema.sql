@@ -32,3 +32,14 @@ create policy "Anyone can update workouts" on workouts for update using (true);
 create policy "Anyone can read logs" on workout_logs for select using (true);
 create policy "Anyone can insert logs" on workout_logs for insert with check (true);
 create policy "Anyone can update logs" on workout_logs for update using (true);
+
+-- Activity tracking (last seen)
+create table activity_log (
+  person text primary key check (person in ('zdb', 'tbo')),
+  last_seen timestamptz not null default now()
+);
+
+alter table activity_log enable row level security;
+create policy "Anyone can read activity" on activity_log for select using (true);
+create policy "Anyone can insert activity" on activity_log for insert with check (true);
+create policy "Anyone can update activity" on activity_log for update using (true);

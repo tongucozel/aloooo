@@ -9,6 +9,7 @@ import {
   retryPendingSync,
   syncTodayToSupabase,
   syncAllLocalLogsToSupabase,
+  updateLastSeen,
   DAYS,
   PROFILES,
   type Person,
@@ -35,6 +36,7 @@ export default function Home() {
     const saved = localStorage.getItem("zdbfit_person") as Person | null;
     if (saved && (saved === "zdb" || saved === "tbo")) {
       setPerson(saved);
+      updateLastSeen(saved);
     }
     retryPendingSync();
     syncAllLocalLogsToSupabase();
@@ -43,6 +45,7 @@ export default function Home() {
   function selectPerson(p: Person) {
     localStorage.setItem("zdbfit_person", p);
     setPerson(p);
+    updateLastSeen(p);
   }
 
   const loadDay = useCallback(
