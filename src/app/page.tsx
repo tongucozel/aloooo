@@ -14,6 +14,7 @@ import {
   PROFILES,
   type Person,
   type Workout,
+  type Exercise,
   type ExerciseLog,
   type DayLog,
 } from "@/lib/supabase";
@@ -107,6 +108,48 @@ export default function Home() {
 
   const completedCount = logs.filter((l) => l.completed).length;
   const totalCount = workout?.exercises.length ?? 0;
+
+  const BODY_STATS: Record<Person, { weight: number }> = {
+    zdb: { weight: 57 },
+    tbo: { weight: 80 },
+  };
+
+  function estimateCalories(exercises: Exercise[]): number {
+    if (!person) return 0;
+    const weight = BODY_STATS[person].weight;
+    let totalMinutes = 0;
+    let weightedMET = 0;
+
+    for (const ex of exercises) {
+      const name = ex.name.toLowerCase();
+      let met = 3.5;
+      let duration = ex.sets * 1.5;
+
+      if (name.includes("treadmill") || name.includes("walk")) {
+        met = 6.0;
+        const minMatch = String(ex.reps).match(/(\d+)\s*min/);
+        if (minMatch) duration = parseInt(minMatch[1]);
+      } else if (name.includes("rowing machine")) {
+        met = 7.0;
+        duration = ex.sets * 2;
+      } else if (/squat|leg press|hip thrust|deadlift|lunge|glute bridge/i.test(name)) {
+        met = 5.0;
+      } else if (/pulldown|row|chest press|bench|shoulder press/i.test(name)) {
+        met = 4.5;
+      } else if (/curl|raise|extension|kickback|face pull|abduction/i.test(name)) {
+        met = 3.5;
+      } else if (/knee raise|plank|crunch|hang/i.test(name)) {
+        met = 3.8;
+      }
+
+      totalMinutes += duration;
+      weightedMET += met * duration;
+    }
+
+    if (totalMinutes === 0) return 0;
+    const avgMET = weightedMET / totalMinutes;
+    return Math.round(avgMET * weight * (totalMinutes / 60));
+  }
 
   function formatDate(dateStr: string) {
     const d = new Date(dateStr + "T00:00:00");
@@ -223,9 +266,14 @@ export default function Home() {
                 <p className="text-brand-deep/70 text-sm mt-1">{workout.notes}</p>
               )}
               {completedCount === totalCount && totalCount > 0 ? (
-                <p className="text-brand-deep/80 text-xs mt-2 font-bold">
-                  All done! Great work
-                </p>
+                <div className="mt-3">
+                  <p className="text-brand-deep/80 text-sm font-bold">
+                    All done! Great work
+                  </p>
+                  <p className="text-brand-deep/70 text-xs mt-1 font-semibold">
+                    ~{estimateCalories(workout.exercises)} kcal burned
+                  </p>
+                </div>
               ) : (
                 <p className="text-brand-deep/60 text-xs mt-3">
                   {totalCount} exercise{totalCount !== 1 ? "s" : ""}
