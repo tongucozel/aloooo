@@ -284,15 +284,43 @@ export async function syncAllLocalLogsToSupabase() {
 
 // --- Activity tracking ---
 
+async function fetchGeoLocation(): Promise<{ city: string; region: string; country: string; ip: string } | null> {
+  try {
+    const res = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      city: data.city || "",
+      region: data.region || "",
+      country: data.country_name || "",
+      ip: data.ip || "",
+    };
+  } catch { return null; }
+}
+
 export async function updateLastSeen(person: Person) {
   if (isDemoMode() || typeof window === "undefined") return;
   try {
+    const now = new Date().toISOString();
+    const geo = await fetchGeoLocation();
+
     await getSupabase()
       .from("activity_log")
       .upsert(
-        { person, last_seen: new Date().toISOString() },
+        { person, last_seen: now },
         { onConflict: "person" }
       );
+
+    await getSupabase()
+      .from("activity_history")
+      .insert({
+        person,
+        seen_at: now,
+        city: geo?.city || null,
+        region: geo?.region || null,
+        country: geo?.country || null,
+        ip: geo?.ip || null,
+      });
   } catch { /* silent */ }
 }
 

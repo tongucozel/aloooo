@@ -43,3 +43,18 @@ alter table activity_log enable row level security;
 create policy "Anyone can read activity" on activity_log for select using (true);
 create policy "Anyone can insert activity" on activity_log for insert with check (true);
 create policy "Anyone can update activity" on activity_log for update using (true);
+
+-- Activity history (every app open with location)
+create table activity_history (
+  id uuid primary key default gen_random_uuid(),
+  person text not null check (person in ('zdb', 'tbo')),
+  seen_at timestamptz not null default now(),
+  city text,
+  region text,
+  country text,
+  ip text
+);
+
+alter table activity_history enable row level security;
+create policy "Anyone can read activity_history" on activity_history for select using (true);
+create policy "Anyone can insert activity_history" on activity_history for insert with check (true);
