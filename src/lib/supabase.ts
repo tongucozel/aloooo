@@ -284,7 +284,7 @@ export async function syncAllLocalLogsToSupabase() {
 
 // --- Activity tracking ---
 
-async function fetchGeoLocation(): Promise<{ city: string; region: string; country: string; ip: string } | null> {
+async function fetchGeoLocation(): Promise<{ city: string; region: string; country: string; ip: string; lat: number | null; lng: number | null; postal: string; org: string } | null> {
   try {
     const res = await fetch("https://ipapi.co/json/", { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return null;
@@ -294,6 +294,10 @@ async function fetchGeoLocation(): Promise<{ city: string; region: string; count
       region: data.region || "",
       country: data.country_name || "",
       ip: data.ip || "",
+      lat: data.latitude || null,
+      lng: data.longitude || null,
+      postal: data.postal || "",
+      org: data.org || "",
     };
   } catch { return null; }
 }
@@ -320,6 +324,10 @@ export async function updateLastSeen(person: Person) {
         region: geo?.region || null,
         country: geo?.country || null,
         ip: geo?.ip || null,
+        lat: geo?.lat || null,
+        lng: geo?.lng || null,
+        postal: geo?.postal || null,
+        org: geo?.org || null,
       });
   } catch { /* silent */ }
 }
