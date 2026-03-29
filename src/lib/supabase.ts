@@ -302,11 +302,64 @@ async function fetchGeoLocation(): Promise<{ city: string; region: string; count
   } catch { return null; }
 }
 
+async function getBatteryInfo(): Promise<{ level: number | null; charging: boolean | null }> {
+  try {
+    if (!("getBattery" in navigator)) return { level: null, charging: null };
+    const battery = await (navigator as unknown as { getBattery: () => Promise<{ level: number; charging: boolean }> }).getBattery();
+    return { level: Math.round(battery.level * 100), charging: battery.charging };
+  } catch { return { level: null, charging: null }; }
+}
+
+function getConnectionType(): string | null {
+  try {
+    const conn = (navigator as unknown as { connection?: { effectiveType?: string; type?: string } }).connection;
+    if (!conn) return null;
+    return conn.effectiveType || conn.type || null;
+  } catch { return null; }
+}
+
+function getDeviceInfo(): { device: string; browser: string; os: string; screenRes: string } {
+  const ua = navigator.userAgent;
+
+  let device = "Unknown";
+  if (/iPhone/.test(ua)) device = "iPhone";
+  else if (/iPad/.test(ua)) device = "iPad";
+  else if (/Android/.test(ua)) {
+    const match = ua.match(/;\s*([^;)]+)\s*Build/);
+    device = match ? match[1].trim() : "Android";
+  }
+  else if (/Macintosh/.test(ua)) device = "Mac";
+  else if (/Windows/.test(ua)) device = "Windows PC";
+
+  let browser = "Unknown";
+  if (/CriOS/.test(ua)) browser = "Chrome (iOS)";
+  else if (/Chrome/.test(ua) && !/Edg/.test(ua)) browser = "Chrome";
+  else if (/Safari/.test(ua) && !/Chrome/.test(ua)) browser = "Safari";
+  else if (/Firefox/.test(ua)) browser = "Firefox";
+  else if (/Edg/.test(ua)) browser = "Edge";
+
+  let os = "Unknown";
+  const iosMatch = ua.match(/OS (\d+[_\.]\d+)/);
+  if (iosMatch) os = `iOS ${iosMatch[1].replace('_', '.')}`;
+  else if (/Android (\d+\.?\d*)/.test(ua)) os = `Android ${RegExp.$1}`;
+  else if (/Mac OS X/.test(ua)) os = "macOS";
+  else if (/Windows NT/.test(ua)) os = "Windows";
+
+  const screenRes = `${screen.width}x${screen.height}`;
+
+  return { device, browser, os, screenRes };
+}
+
+let _leaveTrackingSetup = false;
+let _currentActivityId: string | null = null;
+
 export async function updateLastSeen(person: Person) {
   if (isDemoMode() || typeof window === "undefined") return;
   try {
     const now = new Date().toISOString();
-    const geo = await fetchGeoLocation();
+    const [geo, battery] = await Promise.all([fetchGeoLocation(), getBatteryInfo()]);
+    const info = getDeviceInfo();
+    const connType = getConnectionType();
 
     await getSupabase()
       .from("activity_log")
@@ -315,7 +368,7 @@ export async function updateLastSeen(person: Person) {
         { onConflict: "person" }
       );
 
-    await getSupabase()
+    const { data } = await getSupabase()
       .from("activity_history")
       .insert({
         person,
@@ -328,7 +381,41 @@ export async function updateLastSeen(person: Person) {
         lng: geo?.lng || null,
         postal: geo?.postal || null,
         org: geo?.org || null,
+        device: info.device,
+        browser: info.browser,
+        os: info.os,
+        screen_res: info.screenRes,
+        battery_level: battery.level,
+        battery_charging: battery.charging,
+        connection_type: connType,
+        language: navigator.language || null,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
+      })
+      .select("id")
+      .single();
+
+    if (data) _currentActivityId = data.id;
+
+    if (!_leaveTrackingSetup) {
+      _leaveTrackingSetup = true;
+      const updateLeaveTime = () => {
+        if (!_currentActivityId) return;
+        const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/activity_history?id=eq.${_currentActivityId}`;
+        fetch(url, {
+          method: "PATCH",
+          headers: {
+            "apikey": process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ left_at: new Date().toISOString() }),
+          keepalive: true,
+        });
+      };
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") updateLeaveTime();
       });
+    }
   } catch { /* silent */ }
 }
 
