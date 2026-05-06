@@ -71,6 +71,42 @@ function wKey(person: Person) {
   return `${WORKOUT_KEY}_${person}`;
 }
 
+// ISO 8601 week id, Monday-anchored, local timezone.
+export function weekId(d: Date = new Date()): string {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dayNum = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() - dayNum + 3);
+  const yearStart = new Date(date.getFullYear(), 0, 4);
+  const week =
+    1 +
+    Math.round(
+      ((date.getTime() - yearStart.getTime()) / 86400000 -
+        3 +
+        ((yearStart.getDay() + 6) % 7)) /
+        7
+    );
+  return `${date.getFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+export function weekRange(d: Date = new Date()): { start: string; end: string } {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dayNum = (date.getDay() + 6) % 7;
+  const monday = new Date(date);
+  monday.setDate(date.getDate() - dayNum);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (x: Date) =>
+    `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+  return { start: fmt(monday), end: fmt(sunday) };
+}
+
+function dateForDayOfWeek(day: number, d: Date = new Date()): string {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dayNum = (date.getDay() + 6) % 7;
+  date.setDate(date.getDate() + (day - dayNum));
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function getLocalWorkouts(person: Person): Record<number, Workout> {
   if (typeof window === "undefined") return {};
   const raw = localStorage.getItem(wKey(person));
@@ -134,8 +170,8 @@ export async function saveWorkout(
 
 // --- Exercise logs ---
 
-function logKey(person: Person, date: string, day: number): string {
-  return `${LOG_PREFIX}${person}_${date}_${day}`;
+function logKey(person: Person, scope: string, day: number): string {
+  return `${LOG_PREFIX}${person}_${scope}_${day}`;
 }
 
 function todayStr(): string {
@@ -143,17 +179,48 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function getExerciseLogs(day: number, person: Person): ExerciseLog[] {
+export async function getExerciseLogs(day: number, person: Person): Promise<ExerciseLog[]> {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(logKey(person, todayStr(), day));
-  return raw ? JSON.parse(raw) : [];
+
+  const wid = weekId();
+  const k = logKey(person, wid, day);
+  const localRaw = localStorage.getItem(k);
+  const localLogs: ExerciseLog[] = localRaw ? JSON.parse(localRaw) : [];
+  const localTs = parseInt(localStorage.getItem(k + "__ts") || "0", 10);
+
+  if (isDemoMode()) return localLogs;
+
+  try {
+    const { start, end } = weekRange();
+    const { data } = await getSupabase()
+      .from("workout_logs")
+      .select("exercise_logs, updated_at")
+      .eq("person", person)
+      .eq("day_of_week", day)
+      .gte("log_date", start)
+      .lte("log_date", end)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!data || !Array.isArray(data.exercise_logs)) return localLogs;
+
+    const serverTs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
+    if (serverTs > localTs) return data.exercise_logs as ExerciseLog[];
+    return localLogs;
+  } catch {
+    return localLogs;
+  }
 }
 
 export function saveExerciseLogs(day: number, person: Person, logs: ExerciseLog[]) {
-  const date = todayStr();
-  localStorage.setItem(logKey(person, date, day), JSON.stringify(logs));
+  const wid = weekId();
+  const k = logKey(person, wid, day);
+  localStorage.setItem(k, JSON.stringify(logs));
+  localStorage.setItem(k + "__ts", Date.now().toString());
 
   if (!isDemoMode()) {
+    const date = dateForDayOfWeek(day);
     syncLogToSupabase(day, person, date, logs);
   }
 }
@@ -163,7 +230,13 @@ async function syncLogToSupabase(day: number, person: Person, date: string, logs
     const { error } = await getSupabase()
       .from("workout_logs")
       .upsert(
-        { day_of_week: day, person, log_date: date, exercise_logs: logs },
+        {
+          day_of_week: day,
+          person,
+          log_date: date,
+          exercise_logs: logs,
+          updated_at: new Date().toISOString(),
+        },
         { onConflict: "day_of_week,log_date,person" }
       );
     if (error) {
@@ -196,14 +269,23 @@ export async function retryPendingSync() {
   for (const entry of pending) {
     const [person, date, dayStr] = entry.split("_") as [Person, string, string];
     const day = parseInt(dayStr);
-    const logData = localStorage.getItem(logKey(person, date, day));
+    const [y, m, d] = date.split("-").map(Number);
+    const localDate = new Date(y, (m || 1) - 1, d || 1);
+    const wid = weekId(localDate);
+    const logData = localStorage.getItem(logKey(person, wid, day));
     if (!logData) continue;
 
     try {
       const { error } = await getSupabase()
         .from("workout_logs")
         .upsert(
-          { day_of_week: day, person, log_date: date, exercise_logs: JSON.parse(logData) },
+          {
+            day_of_week: day,
+            person,
+            log_date: date,
+            exercise_logs: JSON.parse(logData),
+            updated_at: new Date().toISOString(),
+          },
           { onConflict: "day_of_week,log_date,person" }
         );
       if (error) stillPending.push(entry);
@@ -217,14 +299,14 @@ export async function retryPendingSync() {
 
 export async function syncTodayToSupabase(day: number, person: Person) {
   if (isDemoMode() || typeof window === "undefined") return;
-  const date = todayStr();
-  const logData = localStorage.getItem(logKey(person, date, day));
+  const wid = weekId();
+  const logData = localStorage.getItem(logKey(person, wid, day));
   if (!logData) return;
 
   const logs: ExerciseLog[] = JSON.parse(logData);
   if (!logs.some((e) => e.completed || e.kg)) return;
 
-  await syncLogToSupabase(day, person, date, logs);
+  await syncLogToSupabase(day, person, dateForDayOfWeek(day), logs);
 }
 
 // One-time sync: push ALL localStorage logs to Supabase (catches any missed syncs)
@@ -268,7 +350,13 @@ export async function syncAllLocalLogsToSupabase() {
       const { error } = await getSupabase()
         .from("workout_logs")
         .upsert(
-          { day_of_week: entry.day, person: entry.person, log_date: entry.date, exercise_logs: entry.logs },
+          {
+            day_of_week: entry.day,
+            person: entry.person,
+            log_date: entry.date,
+            exercise_logs: entry.logs,
+            updated_at: new Date().toISOString(),
+          },
           { onConflict: "day_of_week,log_date,person" }
         );
       if (error) allOk = false;
@@ -446,6 +534,7 @@ export function getLogHistory(day: number, person: Person): DayLog[] {
     const key = localStorage.key(i);
     if (key && key.startsWith(prefix) && key.endsWith(suffix)) {
       const dateStr = key.slice(prefix.length, key.length - suffix.length);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
       if (dateStr === today) continue;
       try {
         const data: ExerciseLog[] = JSON.parse(localStorage.getItem(key)!);

@@ -18,6 +18,7 @@ create table workout_logs (
   log_date date not null,
   exercise_logs jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
   unique(day_of_week, log_date, person)
 );
 
@@ -58,3 +59,9 @@ create table activity_history (
 alter table activity_history enable row level security;
 create policy "Anyone can read activity_history" on activity_history for select using (true);
 create policy "Anyone can insert activity_history" on activity_history for insert with check (true);
+
+-- Realtime: enable live updates on workout_logs (cross-device sync)
+alter publication supabase_realtime add table workout_logs;
+
+-- Migration helper for existing projects: add updated_at if missing
+alter table workout_logs add column if not exists updated_at timestamptz not null default now();

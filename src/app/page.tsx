@@ -5,11 +5,14 @@ import {
   fetchWorkout,
   getExerciseLogs,
   saveExerciseLogs,
-  getLogHistory,
+  getLogHistoryFromSupabase,
   retryPendingSync,
   syncTodayToSupabase,
   syncAllLocalLogsToSupabase,
   updateLastSeen,
+  weekRange,
+  getSupabase,
+  isDemoMode,
   DAYS,
   PROFILES,
   type Person,
@@ -50,27 +53,26 @@ export default function Home() {
   }
 
   const loadDay = useCallback(
-    async (day: number, p: Person) => {
-      setLoading(true);
+    async (day: number, p: Person, silent = false) => {
+      if (!silent) setLoading(true);
       const data = await fetchWorkout(day, p);
       setWorkout(data);
 
       if (data && data.exercises.length > 0) {
-        const saved = getExerciseLogs(day, p);
+        const saved = await getExerciseLogs(day, p);
         const filled: ExerciseLog[] = data.exercises.map((ex, i) => ({
           name: saved[i]?.name || ex.name,
           completed: saved[i]?.completed ?? false,
           kg: saved[i]?.kg ?? "",
         }));
-        setLogs(filled);
-        setHistory(getLogHistory(day, p));
-        // Sync today's localStorage data to Supabase in case previous sync failed
+        setLogs((prev) => (JSON.stringify(prev) === JSON.stringify(filled) ? prev : filled));
+        setHistory(await getLogHistoryFromSupabase(day, p));
         syncTodayToSupabase(day, p);
       } else {
         setLogs([]);
         setHistory([]);
       }
-      setLoading(false);
+      if (!silent) setLoading(false);
     },
     []
   );
@@ -81,6 +83,52 @@ export default function Home() {
       setShowHistory(false);
     }
   }, [selectedDay, person, loadDay]);
+
+  // Realtime: live-update when the same person's logs change on another device
+  useEffect(() => {
+    if (!person || isDemoMode()) return;
+    const sb = getSupabase();
+    const channel = sb
+      .channel(`workout_logs_${person}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "workout_logs",
+          filter: `person=eq.${person}`,
+        },
+        (payload) => {
+          const row = (payload.new ?? payload.old) as
+            | { day_of_week?: number; log_date?: string; exercise_logs?: ExerciseLog[] }
+            | null;
+          if (!row || row.day_of_week !== selectedDay) return;
+          const { start, end } = weekRange();
+          if (!row.log_date || row.log_date < start || row.log_date > end) return;
+          loadDay(selectedDay, person, true);
+        }
+      )
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [person, selectedDay, loadDay]);
+
+  // Refresh on tab/app focus so cross-device changes appear without realtime push
+  useEffect(() => {
+    if (!person) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        loadDay(selectedDay, person, true);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [person, selectedDay, loadDay]);
 
   function toggleComplete(index: number) {
     if (!person) return;
