@@ -481,18 +481,24 @@ export default function Home() {
             })}
           </p>
         </div>
-      ) : (
+      ) : workout?.title?.toLowerCase().includes("rest") ? (
         <div className="text-center py-16">
-          <div className="text-6xl mb-4">
-            {selectedDay === 6 || selectedDay === 5 ? "\u{1F9D8}\u200D\u2640\uFE0F" : "\u{1F4AA}"}
-          </div>
+          <div className="text-6xl mb-4">{"\u{1F9D8}\u200D\u2640\uFE0F"}</div>
           <h3 className="text-xl font-bold text-text-primary mb-2">
-            {selectedDay === 6 || selectedDay === 5 ? "Rest Day" : "No workout yet"}
+            {workout.title}
           </h3>
           <p className="text-text-muted text-sm">
-            {selectedDay === 6 || selectedDay === 5
-              ? "Recovery is part of the process!"
-              : "Your trainer hasn't added a workout for this day yet."}
+            Recovery is part of the process!
+          </p>
+        </div>
+      ) : (
+        <div className="text-center py-16">
+          <div className="text-6xl mb-4">{"\u{1F4AA}"}</div>
+          <h3 className="text-xl font-bold text-text-primary mb-2">
+            No workout yet
+          </h3>
+          <p className="text-text-muted text-sm">
+            Your trainer hasn&apos;t added a workout for this day yet.
           </p>
         </div>
       )}
